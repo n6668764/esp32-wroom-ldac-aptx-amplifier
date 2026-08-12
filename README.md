@@ -69,3 +69,17 @@ idf.py -p COM4 -b 115200 monitor
 ## 开源许可
 
 工程自身代码采用 [MIT License](LICENSE)。内置解码器仍使用各自的上游许可证，详见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。本工程为独立社区项目，LDAC、aptX 等名称及商标归其各自权利人所有。
+
+## 鸣谢
+
+感谢以下开源项目及其贡献者。本工程能够在普通 ESP32-WROOM 上实现多格式蓝牙音频接收，离不开他们公开的代码、文档和研究成果：
+
+- [hegdi/libldacdec](https://github.com/hegdi/libldacdec)：本工程 LDAC 解码器的直接基础；在此基础上完成了 ESP-IDF 组件化、编译兼容修复和适合 ESP32 FPU 的单精度优化。
+- [pali/libfreeaptx](https://github.com/pali/libfreeaptx)：提供 aptX Classic/HD 开源解码实现。
+- [cfint/libfreeaptx-esp](https://github.com/cfint/libfreeaptx-esp)：为 freeaptX 在 ESP 平台上的组件封装提供参考。
+- [Espressif ESP-IDF](https://github.com/espressif/esp-idf)：提供 ESP32、Bluetooth Classic A2DP、FreeRTOS、I2S 和 I2C 基础平台。
+- [Espressif ESP Audio Codec](https://components.espressif.com/components/espressif/esp_audio_codec)：提供 SBC/AAC 解码组件。
+- [pschatzmann/ESP32-A2DP](https://github.com/pschatzmann/ESP32-A2DP)：项目早期 A2DP Sink 数据通路和音频处理方式的重要参考。
+- [Thealexbarney/LibAtrac9](https://github.com/Thealexbarney/LibAtrac9)：其音频编解码研究成果也被 `libldacdec` 上游特别致谢。
+
+也感谢所有参与实机测试、协议栈排错和音质验证的贡献者。
