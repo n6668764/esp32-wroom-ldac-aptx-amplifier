@@ -1,0 +1,155 @@
+diff --git a/components/bt/host/bluedroid/Kconfig.in b/components/bt/host/bluedroid/Kconfig.in
+--- a/components/bt/host/bluedroid/Kconfig.in
++++ b/components/bt/host/bluedroid/Kconfig.in
+@@ -118,6 +118,6 @@ config BT_A2DP_SEP_NUM_MAX
+     depends on BT_A2DP_USE_EXTERNAL_CODEC
+     default 2 if BT_A2DP_CODEC_AAC_ENABLED
+     default 1
+-    range 1 4
++    range 1 5
+     help
+         The maximum number of Stream End Points (SEPs) that can be registered for A2DP.
+diff --git a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+--- a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
++++ b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+@@ -57,4 +57,13 @@ typedef UINT8 tBTC_AV_CODEC_ID;
+ #define BTC_AV_APTX_RATE_44     0x20
+ #define BTC_AV_APTX_CHAN_STEREO 0x02
+ 
++#define BTC_AV_LDAC_VENDOR_ID0  0x2D
++#define BTC_AV_LDAC_VENDOR_ID1  0x01
++#define BTC_AV_LDAC_CODEC_ID0   0xAA
++#define BTC_AV_LDAC_RATE_MASK   0x3F
++#define BTC_AV_LDAC_RATE_48     0x10
++#define BTC_AV_LDAC_RATE_44     0x20
++#define BTC_AV_LDAC_CHAN_MASK   0x07
++#define BTC_AV_LDAC_CHAN_STEREO 0x01
++
+ static inline BOOLEAN btc_av_is_aptx_classic_codec_info(const UINT8 *info)
+@@ -85,4 +94,13 @@ static inline BOOLEAN btc_av_is_aptx_codec_info(const UINT8 *info)
+            (info[9] & BTC_AV_APTX_CHAN_MASK) != 0;
+ }
+ 
++static inline BOOLEAN btc_av_is_ldac_codec_info(const UINT8 *info)
++{
++    return info != NULL && info[0] == 10 && info[2] == 0xff &&
++           info[3] == BTC_AV_LDAC_VENDOR_ID0 && info[4] == BTC_AV_LDAC_VENDOR_ID1 &&
++           info[5] == 0 && info[6] == 0 && info[7] == BTC_AV_LDAC_CODEC_ID0 && info[8] == 0 &&
++           (info[9] & BTC_AV_LDAC_RATE_MASK) != 0 &&
++           (info[10] & BTC_AV_LDAC_CHAN_MASK) != 0;
++}
++
+ static inline BOOLEAN btc_av_aptx_cfg_in_cap(const UINT8 *cfg, const UINT8 *cap)
+@@ -98,4 +116,22 @@ static inline BOOLEAN btc_av_aptx_cfg_in_cap(const UINT8 *cfg, const UINT8 *cap)
+            (cfg[9] & BTC_AV_APTX_CHAN_MASK & cap[9]) != 0;
+ }
+ 
++static inline BOOLEAN btc_av_is_vendor_codec_info(const UINT8 *info)
++{
++    return btc_av_is_aptx_codec_info(info) || btc_av_is_ldac_codec_info(info);
++}
++
++static inline BOOLEAN btc_av_vendor_cfg_in_cap(const UINT8 *cfg, const UINT8 *cap)
++{
++    if (btc_av_is_aptx_codec_info(cfg) && btc_av_is_aptx_codec_info(cap)) {
++        return btc_av_aptx_cfg_in_cap(cfg, cap);
++    }
++    if (btc_av_is_ldac_codec_info(cfg) && btc_av_is_ldac_codec_info(cap)) {
++        return cfg[3] == cap[3] && cfg[4] == cap[4] && cfg[7] == cap[7] &&
++               (cfg[9] & BTC_AV_LDAC_RATE_MASK & cap[9]) != 0 &&
++               (cfg[10] & BTC_AV_LDAC_CHAN_MASK & cap[10]) != 0;
++    }
++    return FALSE;
++}
++
+ /* AV features masks */
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_av.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_av.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_av.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_av.c
+@@ -1542,1 +1542,1 @@ static void bte_av_media_sink_callback(tBTA_AV_EVT event, tBTA_AV_MEDIA *p_data)
+-        else if (btc_av_is_aptx_codec_info(p_codec)) {
++        else if (btc_av_is_vendor_codec_info(p_codec)) {
+@@ -1681,10 +1681,13 @@ static void btc_av_reg_sep(uint8_t tsep, uint8_t seid, esp_a2d_mcc_t *mcc)
+             UINT8 *info = btc_av_cb.codec_caps[seid].info;
+             const UINT8 *cie = (const UINT8 *)&mcc->cie;
+             const BOOLEAN hd = cie[0] == BTC_AV_APTX_HD_VENDOR_ID0 &&
+                                cie[4] == BTC_AV_APTX_HD_CODEC_ID0;
++            const BOOLEAN ldac = cie[0] == BTC_AV_LDAC_VENDOR_ID0 &&
++                                 cie[1] == BTC_AV_LDAC_VENDOR_ID1 &&
++                                 cie[4] == BTC_AV_LDAC_CODEC_ID0;
+             memset(info, 0, AVDT_CODEC_SIZE);
+-            info[0] = hd ? 13 : 9;
++            info[0] = hd ? 13 : (ldac ? 10 : 9);
+             info[1] = A2D_MEDIA_TYPE_AUDIO << 4;
+             info[2] = ESP_A2D_MCT_NON_A2DP;
+-            memcpy(info + 3, &mcc->cie, hd ? 11 : 7);
+-            if (!btc_av_is_aptx_codec_info(info)) {
++            memcpy(info + 3, &mcc->cie, hd ? 11 : (ldac ? 8 : 7));
++            if (!btc_av_is_vendor_codec_info(info)) {
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
+@@ -345,1 +345,1 @@ BOOLEAN bta_av_co_audio_init(UINT8 *p_codec_type, UINT8 *p_codec_info,
+-            (*p_codec_type == ESP_A2D_MCT_NON_A2DP && btc_av_is_aptx_codec_info(p_codec_info)) ?
++            (*p_codec_type == ESP_A2D_MCT_NON_A2DP && btc_av_is_vendor_codec_info(p_codec_info)) ?
+@@ -360,1 +360,1 @@ BOOLEAN bta_av_co_audio_init(UINT8 *p_codec_type, UINT8 *p_codec_info,
+-            (*p_codec_type == ESP_A2D_MCT_NON_A2DP && btc_av_is_aptx_codec_info(p_codec_info)) ?
++            (*p_codec_type == ESP_A2D_MCT_NON_A2DP && btc_av_is_vendor_codec_info(p_codec_info)) ?
+@@ -603,6 +603,11 @@ static void bta_av_build_src_cfg(UINT8 *p_src_cap, UINT8 *p_pref_cfg)
+-                if (btc_av_is_aptx_codec_info(p_src_cap)) {
++                if (btc_av_is_vendor_codec_info(p_src_cap)) {
+                     memcpy(p_pref_cfg, p_src_cap, AVDT_CODEC_SIZE);
+-                    /* Android commonly negotiates aptX HD at 48 kHz. */
+-                    p_pref_cfg[9] = ((p_src_cap[9] & BTC_AV_APTX_RATE_48) ?
++                    if (btc_av_is_ldac_codec_info(p_src_cap)) {
++                        p_pref_cfg[9] = ((p_src_cap[9] & BTC_AV_LDAC_RATE_48) ?
++                                         BTC_AV_LDAC_RATE_48 : BTC_AV_LDAC_RATE_44);
++                        p_pref_cfg[10] = BTC_AV_LDAC_CHAN_STEREO;
++                    } else {
++                        p_pref_cfg[9] = ((p_src_cap[9] & BTC_AV_APTX_RATE_48) ?
+                                      BTC_AV_APTX_RATE_48 : BTC_AV_APTX_RATE_44) |
+                                     BTC_AV_APTX_CHAN_STEREO;
++                    }
+@@ -685,1 +690,1 @@ static void bta_av_save_peer_src_codec_info(tBTA_AV_CO_PEER *p_peer,
+-        supported = btc_av_is_aptx_codec_info(p_codec_info);
++        supported = btc_av_is_vendor_codec_info(p_codec_info);
+@@ -694,1 +699,1 @@ static void bta_av_save_peer_src_codec_info(tBTA_AV_CO_PEER *p_peer,
+-                                 btc_av_is_aptx_codec_info(p_codec_info)) ?
++                                 btc_av_is_vendor_codec_info(p_codec_info)) ?
+@@ -1027,1 +1032,1 @@ void bta_av_co_audio_setconfig(tBTA_AV_HNDL hndl, const RawAddress *p_peer_addr,
+-                    !btc_av_is_aptx_codec_info(p_codec_info) ||
++                    !btc_av_is_vendor_codec_info(p_codec_info) ||
+@@ -1340,1 +1345,1 @@ static BOOLEAN bta_av_co_audio_codec_build_config(UINT8 *p_codec_cfg,
+-        if (!btc_av_aptx_cfg_in_cap(p_codec_cfg, p_codec_caps)) {
++        if (!btc_av_vendor_cfg_in_cap(p_codec_cfg, p_codec_caps)) {
+@@ -1404,1 +1409,1 @@ static BOOLEAN bta_av_co_audio_codec_cfg_matches_caps(UINT8 codec_id,
+-        if (!btc_av_aptx_cfg_in_cap(p_codec_cfg, p_codec_caps)) {
++        if (!btc_av_vendor_cfg_in_cap(p_codec_cfg, p_codec_caps)) {
+@@ -1641,1 +1646,1 @@ static BOOLEAN bta_av_co_audio_peer_src_supports_codec(tBTA_AV_CO_PEER *p_peer,
+-                    if (btc_av_aptx_cfg_in_cap(
++                    if (btc_av_vendor_cfg_in_cap(
+@@ -1741,6 +1746,6 @@ tA2D_STATUS bta_av_co_audio_sink_supports_config(UINT8 codec_type, const UINT8 *p_codec_cfg)
+-        if (!btc_av_is_aptx_codec_info(p_codec_cfg)) {
++        if (!btc_av_is_vendor_codec_info(p_codec_cfg)) {
+             break;
+         }
+         for (index = 0; index < BTA_AV_MAX_SEPS; index++) {
+             if (bta_av_co_cb.codec_caps[index].id == BTC_AV_CODEC_APTX &&
+-                btc_av_aptx_cfg_in_cap(p_codec_cfg, bta_av_co_cb.codec_caps[index].info)) {
++                btc_av_vendor_cfg_in_cap(p_codec_cfg, bta_av_co_cb.codec_caps[index].info)) {
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
+@@ -344,2 +344,12 @@ static void btc_a2dp_sink_handle_inc_media(BT_HDR *p_msg)
+     case BTC_AV_CODEC_APTX:
++        if (btc_av_is_ldac_codec_info(cur_codec_info.info)) {
++            if (p_msg->len < 2) {
++                osi_free(p_msg);
++                return;
++            }
++            num_frames = payload[0] & 0x0f;
++            frame_ptr = payload + 1;
++            frame_len = p_msg->len - 1;
++            break;
++        }
+         /* aptX Classic/HD has no codec-specific media payload header. */

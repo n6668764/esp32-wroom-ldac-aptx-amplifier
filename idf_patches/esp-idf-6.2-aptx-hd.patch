@@ -1,0 +1,115 @@
+diff --git a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+--- a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
++++ b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+@@ -42,5 +42,11 @@ typedef UINT8 tBTC_AV_CODEC_ID;
+ #define BTC_AV_APTX_CODEC_ID0   0x01
+ #define BTC_AV_APTX_CODEC_ID1   0x00
++#define BTC_AV_APTX_HD_VENDOR_ID0 0xD7
++#define BTC_AV_APTX_HD_VENDOR_ID1 0x00
++#define BTC_AV_APTX_HD_VENDOR_ID2 0x00
++#define BTC_AV_APTX_HD_VENDOR_ID3 0x00
++#define BTC_AV_APTX_HD_CODEC_ID0  0x24
++#define BTC_AV_APTX_HD_CODEC_ID1  0x00
+#define BTC_AV_APTX_RATE_MASK   0x30
+#define BTC_AV_APTX_CHAN_MASK   0x03
+#define BTC_AV_APTX_RATE_48     0x10
+#define BTC_AV_APTX_RATE_44     0x20
+@@ -49,17 +55,33 @@ typedef UINT8 tBTC_AV_CODEC_ID;
+ 
+-static inline BOOLEAN btc_av_is_aptx_codec_info(const UINT8 *info)
++static inline BOOLEAN btc_av_is_aptx_classic_codec_info(const UINT8 *info)
+ {
+     return info != NULL && info[0] == 9 && info[2] == 0xff &&
+            info[3] == BTC_AV_APTX_VENDOR_ID0 && info[4] == BTC_AV_APTX_VENDOR_ID1 &&
+            info[5] == BTC_AV_APTX_VENDOR_ID2 && info[6] == BTC_AV_APTX_VENDOR_ID3 &&
+-           info[7] == BTC_AV_APTX_CODEC_ID0 && info[8] == BTC_AV_APTX_CODEC_ID1 &&
++           info[7] == BTC_AV_APTX_CODEC_ID0 && info[8] == BTC_AV_APTX_CODEC_ID1;
++}
++
++static inline BOOLEAN btc_av_is_aptx_hd_codec_info(const UINT8 *info)
++{
++    return info != NULL && info[0] == 9 && info[2] == 0xff &&
++           info[3] == BTC_AV_APTX_HD_VENDOR_ID0 && info[4] == BTC_AV_APTX_HD_VENDOR_ID1 &&
++           info[5] == BTC_AV_APTX_HD_VENDOR_ID2 && info[6] == BTC_AV_APTX_HD_VENDOR_ID3 &&
++           info[7] == BTC_AV_APTX_HD_CODEC_ID0 && info[8] == BTC_AV_APTX_HD_CODEC_ID1;
++}
++
++static inline BOOLEAN btc_av_is_aptx_codec_info(const UINT8 *info)
++{
++    return (btc_av_is_aptx_classic_codec_info(info) ||
++            btc_av_is_aptx_hd_codec_info(info)) &&
+            (info[9] & BTC_AV_APTX_RATE_MASK) != 0 &&
+            (info[9] & BTC_AV_APTX_CHAN_MASK) != 0;
+ }
+ 
+ static inline BOOLEAN btc_av_aptx_cfg_in_cap(const UINT8 *cfg, const UINT8 *cap)
+ {
+     return btc_av_is_aptx_codec_info(cfg) && btc_av_is_aptx_codec_info(cap) &&
++           cfg[3] == cap[3] && cfg[4] == cap[4] && cfg[5] == cap[5] &&
++           cfg[6] == cap[6] && cfg[7] == cap[7] && cfg[8] == cap[8] &&
+            (cfg[9] & BTC_AV_APTX_RATE_MASK & cap[9]) != 0 &&
+            (cfg[9] & BTC_AV_APTX_CHAN_MASK & cap[9]) != 0;
+ }
+diff --git a/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c b/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
+--- a/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
++++ b/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
+@@ -242,10 +242,14 @@ static BOOLEAN avdt_scb_is_raw_aptx_sink(const tAVDT_SCB *p_scb)
+ {
+     const UINT8 *codec = p_scb->curr_cfg.codec_info;
++    const BOOLEAN classic = codec[3] == 0x4f && codec[4] == 0x00 &&
++                            codec[5] == 0x00 && codec[6] == 0x00 &&
++                            codec[7] == 0x01 && codec[8] == 0x00;
++    const BOOLEAN hd = codec[3] == 0xd7 && codec[4] == 0x00 &&
++                       codec[5] == 0x00 && codec[6] == 0x00 &&
++                       codec[7] == 0x24 && codec[8] == 0x00;
+     return p_scb->cs.tsep == AVDT_TSEP_SNK &&
+            codec[AVDT_CODEC_TYPE_INDEX] == 0xff &&
+-           codec[3] == 0x4f && codec[4] == 0x00 &&
+-           codec[5] == 0x00 && codec[6] == 0x00 &&
+-           codec[7] == 0x01 && codec[8] == 0x00;
++           (classic || hd);
+ }
+ 
+ /*******************************************************************************
+@@ -275,5 +279,5 @@ void avdt_scb_hdl_pkt_no_frag(tAVDT_SCB *p_scb, tAVDT_SCB_EVT *p_data)
+ 
+-    /* aptX Classic is a continuous four-byte-codeword stream on this peer.
++    /* aptX Classic/HD is a continuous codec stream on this peer.
+      * Deliver the complete L2CAP media SDU instead of consuming a fictitious
+      * RTP header.  A sentinel sequence value tells the sink layer not to run
+      * RTP loss accounting for these packets. */
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
+@@ -343,14 +343,14 @@ static void btc_a2dp_sink_handle_inc_media(BT_HDR *p_msg)
+ 
+     case BTC_AV_CODEC_APTX:
+-        /* aptX Classic has no codec-specific media payload header.  Each
+-         * four-byte codeword decodes to four interleaved stereo samples. */
++        /* aptX Classic/HD has no codec-specific media payload header. */
+         if (p_msg->len == 0) {
+             osi_free(p_msg);
+             return;
+         }
+-        /* AVDTP may deliver a payload ending in a partial aptX codeword.
+-         * The application decoder carries 1-3 bytes into the next packet. */
+-        num_frames = (p_msg->len + 3) / 4;
++        /* Classic uses four-byte and HD six-byte codewords.  The application
++         * carries a trailing partial codeword into the next packet. */
++        const UINT16 codeword_size = btc_av_is_aptx_hd_codec_info(cur_codec_info.info) ? 6 : 4;
++        num_frames = (p_msg->len + codeword_size - 1) / codeword_size;
+         frame_ptr = payload;
+         frame_len = p_msg->len;
+         break;
+diff --git a/components/bt/host/bluedroid/Kconfig.in b/components/bt/host/bluedroid/Kconfig.in
+--- a/components/bt/host/bluedroid/Kconfig.in
++++ b/components/bt/host/bluedroid/Kconfig.in
+@@ -118,7 +118,7 @@ config BT_A2DP_SEP_NUM_MAX
+     depends on BT_A2DP_USE_EXTERNAL_CODEC
+     default 2 if BT_A2DP_CODEC_AAC_ENABLED
+     default 1
+-    range 1 3
++    range 1 4
+     help
+         The maximum number of Stream End Points (SEPs) that can be registered for A2DP.
+         The default value is 2. If you need to register more SEPs, you can increase this value.

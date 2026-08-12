@@ -1,0 +1,19 @@
+# ESP-IDF build output
+/build/
+/managed_components/
+/sdkconfig.old
+
+# Local editor and tool configuration
+/.vscode/
+/.idea/
+/.vendor-metadata/
+
+# This project uses the native ESP-IDF A2DP API directly. The local copy is
+# retained only as a development reference and is not needed to build.
+/components/ESP32-A2DP/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.tmp

@@ -1,0 +1,28 @@
+diff --git a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+--- a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
++++ b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+@@ -54,6 +54,7 @@ typedef UINT8 tBTC_AV_CODEC_ID;
+ #define BTC_AV_APTX_HD_CODEC_ID0  0x24
+ #define BTC_AV_APTX_HD_CODEC_ID1  0x00
+ #define BTC_AV_APTX_RATE_MASK   0x30
+ #define BTC_AV_APTX_CHAN_MASK   0x03
++#define BTC_AV_APTX_RATE_48     0x10
+ #define BTC_AV_APTX_RATE_44     0x20
+ #define BTC_AV_APTX_CHAN_STEREO 0x02
+ 
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
+@@ -604,8 +604,10 @@ static void bta_av_build_src_cfg(UINT8 *p_src_cap, UINT8 *p_pref_cfg)
+             case ESP_A2D_MCT_NON_A2DP:
+                 if (btc_av_is_aptx_codec_info(p_src_cap)) {
+                     memcpy(p_pref_cfg, p_src_cap, AVDT_CODEC_SIZE);
+-                    /* Prefer the fixed 44.1 kHz/stereo path used by this sink. */
+-                    p_pref_cfg[9] = BTC_AV_APTX_RATE_44 | BTC_AV_APTX_CHAN_STEREO;
++                    /* Android commonly negotiates aptX HD at 48 kHz. */
++                    p_pref_cfg[9] = ((p_src_cap[9] & BTC_AV_APTX_RATE_48) ?
++                                     BTC_AV_APTX_RATE_48 : BTC_AV_APTX_RATE_44) |
++                                    BTC_AV_APTX_CHAN_STEREO;
+                 } else {
+                     APPL_TRACE_ERROR("bta_av_build_src_cfg unsupported vendor codec");
+                 }

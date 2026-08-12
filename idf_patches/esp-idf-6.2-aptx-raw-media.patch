@@ -1,0 +1,77 @@
+diff --git a/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c b/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
+--- a/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
++++ b/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
+@@ -239,6 +239,19 @@ void avdt_scb_hdl_open_rsp(tAVDT_SCB *p_scb, tAVDT_SCB_EVT *p_data)
+     btu_start_timer(&p_scb->timer_entry, BTU_TTYPE_AVDT_SCB_TC, AVDT_SCB_TC_CONN_TOUT);
+ }
+ 
++/* This project's aptX source sends the vendor media payload without an RTP
++ * header.  The stock receive path always removes twelve RTP bytes, corrupting
++ * three aptX codewords and interpreting codec data as sequence/timestamp. */
++static BOOLEAN avdt_scb_is_raw_aptx_sink(const tAVDT_SCB *p_scb)
++{
++    const UINT8 *codec = p_scb->curr_cfg.codec_info;
++    return p_scb->cs.tsep == AVDT_TSEP_SNK &&
++           codec[AVDT_CODEC_TYPE_INDEX] == 0xff &&
++           codec[3] == 0x4f && codec[4] == 0x00 &&
++           codec[5] == 0x00 && codec[6] == 0x00 &&
++           codec[7] == 0x01 && codec[8] == 0x00;
++}
++
+ /*******************************************************************************
+ **
+ ** Function         avdt_scb_hdl_pkt_no_frag
+@@ -262,6 +277,20 @@ void avdt_scb_hdl_pkt_no_frag(tAVDT_SCB *p_scb, tAVDT_SCB_EVT *p_data)
+ 
+     p = p_start = (UINT8 *)(p_data->p_pkt + 1) + p_data->p_pkt->offset;
+ 
++    /* aptX Classic is a continuous four-byte-codeword stream on this peer.
++     * Deliver the complete L2CAP media SDU instead of consuming a fictitious
++     * RTP header.  A sentinel sequence value tells the sink layer not to run
++     * RTP loss accounting for these packets. */
++    if (avdt_scb_is_raw_aptx_sink(p_scb)) {
++        if (p_scb->cs.p_data_cback != NULL && len != 0) {
++            p_data->p_pkt->layer_specific = 0xffff;
++            (*p_scb->cs.p_data_cback)(avdt_scb_to_hdl(p_scb), p_data->p_pkt,
++                                      0, 0);
++            return;
++        }
++        goto length_error;
++    }
++
+     /* parse media packet header */
+     offset = 12; // AVDT_MSG_PRS_OCTET1(1) + AVDT_MSG_PRS_M_PT(1) + UINT16(2) + UINT32(4) + 4
+     if (len < offset) {
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/btc_a2dp_sink_ext_coedc.c
+@@ -268,17 +268,20 @@ static void btc_a2dp_sink_handle_inc_media(BT_HDR *p_msg)
+         return;
+     }
+ 
+-    if (p_msg->layer_specific != a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num) {
+-        /* Because the sequence number of some devices is not recounted */
+-        if (!a2dp_sink_local_param.media_pkt_seq_num.seq_num_recount ||
+-                a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num != 0x1) {
+-            APPL_TRACE_WARNING("Sequence numbers error, recv:0x%x, expect:0x%x, recount:0x%x",
+-                                p_msg->layer_specific, a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num,
+-                                a2dp_sink_local_param.media_pkt_seq_num.seq_num_recount);
++    /* Raw aptX media has no RTP sequence number (0xffff is set by AVDT). */
++    if (cur_codec_info.id != BTC_AV_CODEC_APTX || p_msg->layer_specific != 0xffff) {
++        if (p_msg->layer_specific != a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num) {
++            /* Because the sequence number of some devices is not recounted */
++            if (!a2dp_sink_local_param.media_pkt_seq_num.seq_num_recount ||
++                    a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num != 0x1) {
++                APPL_TRACE_WARNING("Sequence numbers error, recv:0x%x, expect:0x%x, recount:0x%x",
++                                    p_msg->layer_specific, a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num,
++                                    a2dp_sink_local_param.media_pkt_seq_num.seq_num_recount);
++            }
+         }
++        a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num = p_msg->layer_specific + 1;
++        a2dp_sink_local_param.media_pkt_seq_num.seq_num_recount = false;
+     }
+-    a2dp_sink_local_param.media_pkt_seq_num.expected_seq_num  = p_msg->layer_specific + 1;
+-    a2dp_sink_local_param.media_pkt_seq_num.seq_num_recount = false;
+ 
+     memcpy(&timestamp, (UINT8 *)(p_msg + 1), sizeof(UINT32));
+ 
