@@ -1,6 +1,6 @@
 # ESP32 LDAC/aptX HD/Classic 蓝牙功放（ESP-IDF 6.2）
 
-本版本保留蓝牙音频接收、解码和 I2S 输出，并加入独立低优先级的 SSD1306 FFT 频谱显示。音乐喷泉的泵控制、PWM 和水型配置仍已删除。
+本版本保留蓝牙音频接收、解码和 I2S 输出，并加入独立低优先级的 SSD1306 FFT 频谱显示。
 
 ## 硬件兼容性
 
@@ -25,7 +25,7 @@
 aptX Classic/HD 解码使用 `components/freeaptx`，其许可证见该目录中的 `COPYING`。
 LDAC 解码使用实验性的 `components/libldacdec`，其许可证见该目录中的 `LICENSE`。本工程已将其 IMDCT 热路径从软件模拟的双精度改为 ESP32 可硬件执行的单精度浮点；能否持续实时解码仍须以实际播放测试为准，建议依次测试 LDAC 330/660/990 kbps，并观察 `LDAC overrun` 日志。
 
-I2S TX DMA 已启用自动清零；蓝牙暂停或断开时还会主动停止并清空 DMA，以避免 PCM5102 保持最后一段声音。
+
 
 ## ESP-IDF 6.2 补丁
 
