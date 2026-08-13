@@ -19,7 +19,7 @@
 - WS/LRCK：GPIO 25
 - DATA：GPIO 23
 - SSD1306：128×64 I²C，SDA GPIO 21、SCL GPIO 22、地址 `0x3C`
-- 频谱：256 点单精度 FFT、32 柱、约 20 FPS；单帧覆盖不及时时自动丢弃旧显示数据，不阻塞音频
+- 频谱：256 点单精度 FFT、32 柱、约 20 FPS；左上角显示 AVRCP 绝对音量 `V0`–`V100`；单帧覆盖不及时时自动丢弃旧显示数据，不阻塞音频
 - 蓝牙名称：`ESP32 aptX Amplifier`
 
 aptX Classic/HD 解码使用 `components/freeaptx`，其许可证见该目录中的 `COPYING`。

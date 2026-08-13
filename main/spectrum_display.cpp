@@ -25,6 +25,7 @@ struct fft_block_t {
 static QueueHandle_t s_fft_queue;
 static i2c_master_dev_handle_t s_oled;
 static volatile bool s_active;
+static volatile uint8_t s_absolute_volume = 127;
 static float s_capture[FFT_SIZE];
 static size_t s_capture_pos;
 
@@ -57,6 +58,51 @@ static void set_pixel(uint8_t *framebuffer, int x, int y)
 {
     if ((unsigned)x < 128 && (unsigned)y < 64) {
         framebuffer[x + (y >> 3) * 128] |= (uint8_t)(1U << (y & 7));
+    }
+}
+
+static uint16_t glyph3x5(char c)
+{
+    static constexpr uint16_t digits[10] = {
+        0b111101101101111, 0b010110010010111, 0b111001111100111,
+        0b111001111001111, 0b101101111001001, 0b111100111001111,
+        0b111100111101111, 0b111001001001001, 0b111101111101111,
+        0b111101111001111,
+    };
+    if (c >= '0' && c <= '9') return digits[c - '0'];
+    if (c == 'V') return 0b101101101101010;
+    return 0;
+}
+
+static void draw_volume(uint8_t *framebuffer)
+{
+    // Reserve a compact 16x7 black label over the upper-left spectrum area.
+    for (int y = 0; y < 7; ++y) {
+        for (int x = 0; x < 16; ++x) {
+            framebuffer[x + (y >> 3) * 128] &= (uint8_t)~(1U << (y & 7));
+        }
+    }
+    const unsigned percent = ((unsigned)s_absolute_volume * 100U + 63U) / 127U;
+    char text[5] = {'V', 0, 0, 0, 0};
+    size_t length = 1;
+    if (percent >= 100) {
+        text[length++] = '1'; text[length++] = '0'; text[length++] = '0';
+    } else if (percent >= 10) {
+        text[length++] = (char)('0' + percent / 10);
+        text[length++] = (char)('0' + percent % 10);
+    } else {
+        text[length++] = (char)('0' + percent);
+    }
+    for (size_t index = 0; index < length; ++index) {
+        const uint16_t glyph = glyph3x5(text[index]);
+        const int origin_x = (int)index * 4;
+        for (int row = 0; row < 5; ++row) {
+            for (int col = 0; col < 3; ++col) {
+                if (glyph & (1U << (14 - row * 3 - col))) {
+                    set_pixel(framebuffer, origin_x + col, row + 1);
+                }
+            }
+        }
     }
 }
 
@@ -148,6 +194,7 @@ static void fft_task(void *)
                 for (int y = 63; y >= 64 - h; --y) set_pixel(framebuffer, x, y);
             }
         }
+        draw_volume(framebuffer);
 
         const int64_t now = esp_timer_get_time();
         if (now - last_draw >= 50000) {
@@ -215,4 +262,9 @@ void spectrum_display_set_active(bool active)
 {
     s_active = active;
     if (!active && s_fft_queue != nullptr) xQueueReset(s_fft_queue);
+}
+
+void spectrum_display_set_volume(uint8_t absolute_volume)
+{
+    s_absolute_volume = absolute_volume > 127 ? 127 : absolute_volume;
 }

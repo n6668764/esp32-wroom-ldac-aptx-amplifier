@@ -8,3 +8,4 @@
 esp_err_t spectrum_display_init(void);
 void spectrum_display_submit_i2s(const int32_t *stereo, size_t frames);
 void spectrum_display_set_active(bool active);
+void spectrum_display_set_volume(uint8_t absolute_volume);

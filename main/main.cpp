@@ -6,6 +6,7 @@
 
 #include "driver/i2s_std.h"
 #include "esp_a2dp_api.h"
+#include "esp_avrc_api.h"
 #include "esp_aac_dec.h"
 #include "esp_audio_dec.h"
 #include "esp_audio_dec_reg.h"
@@ -29,7 +30,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-fft-v12";
+static constexpr char FIRMWARE_REV[] = "ldac-fft-volume-v15";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
@@ -658,6 +659,22 @@ static void gap_callback(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *par
     }
 }
 
+static void avrc_target_callback(esp_avrc_tg_cb_event_t event, esp_avrc_tg_cb_param_t *param)
+{
+    if (event == ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT) {
+        const uint8_t volume = param->set_abs_vol.volume & 0x7f;
+        spectrum_display_set_volume(volume);
+        ESP_LOGI(TAG, "absolute volume=%u%% (%u/127)",
+                 (unsigned)volume * 100U / 127U, (unsigned)volume);
+    } else if (event == ESP_AVRC_TG_REGISTER_NOTIFICATION_EVT &&
+               param->reg_ntf.event_id == ESP_AVRC_RN_VOLUME_CHANGE) {
+        esp_avrc_rn_param_t response = {};
+        response.volume = 127;
+        esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_VOLUME_CHANGE,
+                                ESP_AVRC_RN_RSP_INTERIM, &response);
+    }
+}
+
 static void init_i2s(void)
 {
     i2s_chan_config_t channel = I2S_CHANNEL_DEFAULT_CONFIG(I2S_NUM_0, I2S_ROLE_MASTER);
@@ -701,6 +718,13 @@ static void init_bluetooth(void)
     esp_bt_pin_code_t pin = {'1', '2', '3', '4'};
     ESP_ERROR_CHECK(esp_bt_gap_set_pin(ESP_BT_PIN_TYPE_FIXED, 4, pin));
     ESP_ERROR_CHECK(esp_bt_gap_set_device_name(DEVICE_NAME));
+
+    ESP_ERROR_CHECK(esp_avrc_tg_register_callback(avrc_target_callback));
+    ESP_ERROR_CHECK(esp_avrc_tg_init());
+    esp_avrc_rn_evt_cap_mask_t volume_events = {};
+    esp_avrc_rn_evt_bit_mask_operation(ESP_AVRC_BIT_MASK_OP_SET, &volume_events,
+                                       ESP_AVRC_RN_VOLUME_CHANGE);
+    ESP_ERROR_CHECK(esp_avrc_tg_set_rn_evt_cap(&volume_events));
 
     ESP_ERROR_CHECK(esp_a2d_register_callback(a2dp_callback));
     ESP_ERROR_CHECK(esp_a2d_sink_init());
