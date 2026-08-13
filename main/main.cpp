@@ -29,7 +29,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-fft-ui-v13";
+static constexpr char FIRMWARE_REV[] = "ldac-fft-14k-v14";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
@@ -356,7 +356,7 @@ static void write_pcm(uint8_t *data, size_t size, uint8_t channels, uint8_t bits
     }
 
     spectrum_display_submit_i2s(reinterpret_cast<const int32_t *>(i2s_data),
-                                i2s_size / (2 * sizeof(int32_t)));
+                                i2s_size / (2 * sizeof(int32_t)), s_sample_rate);
 
     xSemaphoreTake(s_i2s_mutex, portMAX_DELAY);
     size_t offset = 0;
