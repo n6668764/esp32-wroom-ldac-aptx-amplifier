@@ -30,7 +30,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-24bit-v17";
+static constexpr char FIRMWARE_REV[] = "ldac-24bit-ramp-v18";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
@@ -85,6 +85,7 @@ static uint8_t s_channels = 2;
 static uint32_t s_decoder_generation;
 static volatile uint8_t s_absolute_volume = 127;
 static volatile int32_t s_volume_gain_q15 = 32768;
+static int32_t s_applied_volume_gain_q15 = 32768;
 
 static esp_err_t set_i2s_rate(uint32_t sample_rate)
 {
@@ -363,10 +364,26 @@ static void write_pcm(uint8_t *data, size_t size, uint8_t channels, uint8_t bits
     // V100 is bit-exact, and the lower phone steps remain comfortably quiet.
     int32_t *pcm = reinterpret_cast<int32_t *>(i2s_data);
     const size_t pcm_samples = i2s_size / sizeof(int32_t);
-    const int32_t gain_q15 = s_volume_gain_q15;
-    if (gain_q15 != 32768) {
+    const int32_t target_gain_q15 = s_volume_gain_q15;
+    const size_t frames = pcm_samples / 2;
+    if (s_applied_volume_gain_q15 != target_gain_q15) {
+        // Ramp to the new AVRCP gain across one PCM block. An instantaneous
+        // gain step at a non-zero waveform crossing produces an audible click.
+        int64_t gain_q31 = (int64_t)s_applied_volume_gain_q15 << 16;
+        const int64_t gain_step_q31 = frames == 0 ? 0 :
+            (((int64_t)target_gain_q15 - s_applied_volume_gain_q15) << 16) /
+            (int64_t)frames;
+        for (size_t frame = 0; frame < frames; ++frame) {
+            gain_q31 += gain_step_q31;
+            const int32_t gain_q15 = (int32_t)(gain_q31 >> 16);
+            pcm[2 * frame] = (int32_t)(((int64_t)pcm[2 * frame] * gain_q15) >> 15);
+            pcm[2 * frame + 1] =
+                (int32_t)(((int64_t)pcm[2 * frame + 1] * gain_q15) >> 15);
+        }
+        s_applied_volume_gain_q15 = target_gain_q15;
+    } else if (target_gain_q15 != 32768) {
         for (size_t i = 0; i < pcm_samples; ++i) {
-            pcm[i] = (int32_t)(((int64_t)pcm[i] * gain_q15) >> 15);
+            pcm[i] = (int32_t)(((int64_t)pcm[i] * target_gain_q15) >> 15);
         }
     }
 
@@ -571,8 +588,18 @@ static void decoder_task(void *)
 
 static void audio_data_callback(esp_a2d_conn_hdl_t, esp_a2d_audio_buff_t *buffer)
 {
-    if (!s_connected || s_raw_queue == nullptr ||
-        xQueueSend(s_raw_queue, &buffer, 0) != pdTRUE) {
+    if (!s_connected || s_raw_queue == nullptr) {
+        esp_a2d_audio_buff_free(buffer);
+        return;
+    }
+    if (xQueueSend(s_raw_queue, &buffer, 0) != pdTRUE) {
+        static int64_t last_drop_log_us = 0;
+        const int64_t now_us = esp_timer_get_time();
+        if (now_us - last_drop_log_us >= 1000000) {
+            ESP_LOGW(TAG, "audio queue full: packet dropped (depth=%u)",
+                     (unsigned)uxQueueMessagesWaiting(s_raw_queue));
+            last_drop_log_us = now_us;
+        }
         esp_a2d_audio_buff_free(buffer);
     }
 }
