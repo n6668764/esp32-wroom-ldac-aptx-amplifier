@@ -16,12 +16,10 @@ static constexpr gpio_num_t OLED_SCL = GPIO_NUM_22;
 static constexpr uint8_t OLED_ADDRESS = 0x3C;
 static constexpr size_t FFT_SIZE = 256;
 static constexpr size_t BAR_COUNT = 32;
-static constexpr float DISPLAY_MAX_HZ = 14000.0f;
 static constexpr float PI_F = 3.14159265358979323846f;
 
 struct fft_block_t {
     float samples[FFT_SIZE];
-    uint32_t sample_rate;
 };
 
 static QueueHandle_t s_fft_queue;
@@ -129,16 +127,10 @@ static void fft_task(void *)
 
         float levels[BAR_COUNT];
         float peak_db = 1.0f;
-        const float bin_hz = (float)block.sample_rate / FFT_SIZE;
-        size_t last_bin = (size_t)(DISPLAY_MAX_HZ / bin_hz);
-        if (last_bin > FFT_SIZE / 2 - 1) last_bin = FFT_SIZE / 2 - 1;
-        if (last_bin < BAR_COUNT) last_bin = BAR_COUNT;
         for (size_t bar = 0; bar < BAR_COUNT; ++bar) {
             float power = 1.0f;
-            const size_t first_bin = 1 + (bar * last_bin) / BAR_COUNT;
-            size_t end_bin = 1 + ((bar + 1) * last_bin) / BAR_COUNT;
-            if (end_bin <= first_bin) end_bin = first_bin + 1;
-            for (size_t bin = first_bin; bin < end_bin; ++bin) {
+            const size_t first_bin = 1 + bar * 2;
+            for (size_t bin = first_bin; bin < first_bin + 2; ++bin) {
                 power += re[bin] * re[bin] + im[bin] * im[bin];
             }
             levels[bar] = 10.0f * log10f(power);
@@ -205,7 +197,7 @@ esp_err_t spectrum_display_init(void)
     return ESP_OK;
 }
 
-void spectrum_display_submit_i2s(const int32_t *stereo, size_t frames, uint32_t sample_rate)
+void spectrum_display_submit_i2s(const int32_t *stereo, size_t frames)
 {
     if (!s_active || s_fft_queue == nullptr) return;
     for (size_t i = 0; i < frames; ++i) {
@@ -213,7 +205,6 @@ void spectrum_display_submit_i2s(const int32_t *stereo, size_t frames, uint32_t 
         if (s_capture_pos == FFT_SIZE) {
             fft_block_t block;
             memcpy(block.samples, s_capture, sizeof(s_capture));
-            block.sample_rate = sample_rate;
             xQueueOverwrite(s_fft_queue, &block);
             s_capture_pos = 0;
         }
