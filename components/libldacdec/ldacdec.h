@@ -82,8 +82,8 @@ extern "C" {
 
 int ldacdecInit( ldacdec_t *ctx );
 int ldacDecode( ldacdec_t *ctx, uint8_t *stream, int16_t *pcm, int *bytesUsed );
-/* Decode to signed 24-bit PCM, left-aligned in each int32_t output slot. */
-int ldacDecode24( ldacdec_t *ctx, uint8_t *stream, int32_t *pcm, int *bytesUsed );
+/* Experimental float-to-S32 output for a native 32-bit PCM/I2S path. */
+int ldacDecode32( ldacdec_t *ctx, uint8_t *stream, int32_t *pcm, int *bytesUsed );
 int ldacNullPacket( ldacdec_t *ctx, uint8_t *output, int *bytesUsed );
 int ldacdecGetSampleRate( ldacdec_t *ctx );
 int ldacdecGetChannelCount( ldacdec_t *ctx );
