@@ -30,7 +30,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-fft-volume-v15";
+static constexpr char FIRMWARE_REV[] = "ldac-volume-gain-v16";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
@@ -83,6 +83,8 @@ static bool s_aptx_hd;
 static uint32_t s_sample_rate = I2S_RATE;
 static uint8_t s_channels = 2;
 static uint32_t s_decoder_generation;
+static volatile uint8_t s_absolute_volume = 127;
+static volatile int32_t s_volume_gain_q15 = 32768;
 
 static esp_err_t set_i2s_rate(uint32_t sample_rate)
 {
@@ -353,6 +355,18 @@ static void write_pcm(uint8_t *data, size_t size, uint8_t channels, uint8_t bits
             const int32_t mono = (int32_t)(((int64_t)pcm[2 * i] + pcm[2 * i + 1]) / 2);
             pcm[2 * i] = mono;
             pcm[2 * i + 1] = mono;
+        }
+    }
+
+    // With AVRCP absolute volume the phone sends full-scale PCM and delegates
+    // attenuation to the sink. Use a cheap perceptual curve: V0 is mute,
+    // V100 is bit-exact, and the lower phone steps remain comfortably quiet.
+    int32_t *pcm = reinterpret_cast<int32_t *>(i2s_data);
+    const size_t pcm_samples = i2s_size / sizeof(int32_t);
+    const int32_t gain_q15 = s_volume_gain_q15;
+    if (gain_q15 != 32768) {
+        for (size_t i = 0; i < pcm_samples; ++i) {
+            pcm[i] = (int32_t)(((int64_t)pcm[i] * gain_q15) >> 15);
         }
     }
 
@@ -663,13 +677,16 @@ static void avrc_target_callback(esp_avrc_tg_cb_event_t event, esp_avrc_tg_cb_pa
 {
     if (event == ESP_AVRC_TG_SET_ABSOLUTE_VOLUME_CMD_EVT) {
         const uint8_t volume = param->set_abs_vol.volume & 0x7f;
+        s_absolute_volume = volume;
+        s_volume_gain_q15 = volume == 127 ? 32768 :
+            (int32_t)(((uint32_t)volume * volume * 32768U) / (127U * 127U));
         spectrum_display_set_volume(volume);
         ESP_LOGI(TAG, "absolute volume=%u%% (%u/127)",
                  (unsigned)volume * 100U / 127U, (unsigned)volume);
     } else if (event == ESP_AVRC_TG_REGISTER_NOTIFICATION_EVT &&
                param->reg_ntf.event_id == ESP_AVRC_RN_VOLUME_CHANGE) {
         esp_avrc_rn_param_t response = {};
-        response.volume = 127;
+        response.volume = s_absolute_volume;
         esp_avrc_tg_send_rn_rsp(ESP_AVRC_RN_VOLUME_CHANGE,
                                 ESP_AVRC_RN_RSP_INTERIM, &response);
     }
