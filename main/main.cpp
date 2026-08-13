@@ -29,7 +29,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-fft-v12";
+static constexpr char FIRMWARE_REV[] = "ldac-fft-ui-v13";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
