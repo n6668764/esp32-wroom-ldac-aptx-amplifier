@@ -30,7 +30,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-volume-gain-v16";
+static constexpr char FIRMWARE_REV[] = "ldac-24bit-v17";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
@@ -207,7 +207,7 @@ static esp_audio_err_t decoder_open(const esp_a2d_mcc_t *mcc)
             s_decoder_open = true;
             s_channels = 2;
             result = ESP_AUDIO_ERR_OK;
-            ESP_LOGI(TAG, "codec=LDAC, %u Hz, stereo, PCM=16-bit (experimental)",
+            ESP_LOGI(TAG, "codec=LDAC, %u Hz, stereo, PCM=24-bit (32-bit I2S)",
                      (unsigned)s_sample_rate);
         } else {
             free(s_ldac_decoder);
@@ -425,9 +425,9 @@ static void decoder_task(void *)
             while (offset < packet->data_len && packet->data[offset] == 0xAA) {
                 int bytes_used = 0;
                 const int64_t started = esp_timer_get_time();
-                const int decode_result = ldacDecode(s_ldac_decoder, packet->data + offset,
-                                                      reinterpret_cast<int16_t *>(output),
-                                                      &bytes_used);
+                const int decode_result = ldacDecode24(s_ldac_decoder, packet->data + offset,
+                                                       reinterpret_cast<int32_t *>(output),
+                                                       &bytes_used);
                 const uint32_t decode_us = (uint32_t)(esp_timer_get_time() - started);
                 if (decode_result != 0 || bytes_used <= 0 ||
                     offset + (size_t)bytes_used > packet->data_len) {
@@ -463,8 +463,8 @@ static void decoder_task(void *)
                 }
                 offset += (size_t)bytes_used;
                 xSemaphoreGive(s_decoder_mutex);
-                write_pcm(output, (size_t)samples * channels * sizeof(int16_t),
-                          (uint8_t)channels, 16);
+                write_pcm(output, (size_t)samples * channels * sizeof(int32_t),
+                          (uint8_t)channels, 32);
                 xSemaphoreTake(s_decoder_mutex, portMAX_DELAY);
                 if (!s_decoder_open || s_decoder_kind != DECODER_LDAC) break;
             }

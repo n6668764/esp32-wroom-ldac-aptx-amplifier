@@ -13,7 +13,7 @@
 
 - 编解码器优先级：LDAC、aptX HD、aptX Classic、AAC、SBC
 - 输出：44.1/48/88.2/96 kHz、32-bit I2S 槽；当前为左右声道混合后复制到 L/R 的单声道输出
-- LDAC 解码输出为 16-bit PCM；aptX HD 保留 24 位有效 PCM
+- LDAC 与 aptX HD 均保留 24 位有效 PCM，并使用 32-bit I2S 容器输出
 - DAC：PCM5102
 - BCK：GPIO 26
 - WS/LRCK：GPIO 25

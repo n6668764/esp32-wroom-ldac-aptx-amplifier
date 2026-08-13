@@ -404,6 +404,34 @@ static void pcmFloatToShort( frame_t *this, int16_t *pcmOut )
     }
 }
 
+/*
+ * Keep eight more fractional bits from the IMDCT output than the legacy
+ * int16_t path. The 24-bit sample is left-aligned so it can be written
+ * directly to a 32-bit Philips-I2S slot.
+ */
+static void pcmFloatToS24In32( frame_t *this, int32_t *pcmOut )
+{
+    int i = 0;
+    for( int smpl = 0; smpl < this->frameSamples; ++smpl )
+    {
+        for( int ch = 0; ch < this->channelCount; ++ch, ++i )
+        {
+            float sample = this->channels[ch].pcm[smpl];
+            int32_t pcm24;
+            if( sample >= 32768.0f )
+                pcm24 = 8388607;
+            else if( sample <= -32768.0f )
+                pcm24 = -8388608;
+            else
+                pcm24 = Round(sample * 256.0f);
+
+            if( pcm24 > 8388607 ) pcm24 = 8388607;
+            if( pcm24 < -8388608 ) pcm24 = -8388608;
+            pcmOut[i] = pcm24 * 256;
+        }
+    }
+}
+
 static const int channelConfigIdToChannelCount[] = { 1, 2, 2 };
 
 int ldacdecGetChannelCount( ldacdec_t *this )
@@ -517,5 +545,48 @@ int ldacNullPacket( ldacdec_t *this, uint8_t *output, int *bytesUsed )
     }
 
     *bytesUsed = frame->frameLength + 3;
+    return 0;
+}
+
+int ldacDecode24( ldacdec_t *this, uint8_t *stream, int32_t *pcm, int *bytesUsed )
+{
+    BitReaderCxt brObject;
+    BitReaderCxt *br = &brObject;
+    InitBitReaderCxt( br, stream );
+
+    frame_t *frame = &this->frame;
+
+    int ret = decodeFrame( frame, br );
+    if( ret < 0 )
+        return -1;
+
+    for( int block = 0; block<gaa_block_setting_ldac[frame->channelConfigId][1]; ++block )
+    {
+        decodeBand( frame, br );
+        decodeGradient( frame, br );
+        calculateGradient( frame );
+
+        for( int i=0; i<frame->channelCount; ++i )
+        {
+            channel_t *channel = &frame->channels[i];
+            decodeScaleFactors( frame, br, i );
+            calculatePrecisionMask( channel );
+            calculatePrecisions( channel );
+
+            decodeSpectrum( channel, br );
+            decodeSpectrumFine( channel, br );
+            dequantizeSpectra( channel );
+            scaleSpectrum( channel );
+
+            RunImdct( &channel->mdct, channel->spectra, channel->pcm );
+        }
+        AlignPosition( br, 8 );
+
+        pcmFloatToS24In32( frame, pcm );
+    }
+    AlignPosition( br, (frame->frameLength)*8 + 24 );
+
+    if( bytesUsed != NULL )
+        *bytesUsed = br->Position / 8;
     return 0;
 }
