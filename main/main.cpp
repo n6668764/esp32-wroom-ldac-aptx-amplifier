@@ -30,7 +30,7 @@
 // Music-fountain FFT, OLED and pump PWM control are intentionally omitted.
 static constexpr char TAG[] = "BT_AMP";
 static constexpr char DEVICE_NAME[] = "ESP32 aptX Amplifier";
-static constexpr char FIRMWARE_REV[] = "ldac-32bit-experimental-v19";
+static constexpr char FIRMWARE_REV[] = "ldac-32bit-stereo-v20";
 
 static constexpr gpio_num_t I2S_BCK = GPIO_NUM_26;
 static constexpr gpio_num_t I2S_WS = GPIO_NUM_25;
@@ -39,7 +39,7 @@ static constexpr uint32_t I2S_RATE = 44100;
 static constexpr uint32_t I2S_RATE_48K = 48000;
 static constexpr uint32_t I2S_RATE_88K = 88200;
 static constexpr uint32_t I2S_RATE_96K = 96000;
-static constexpr bool MONO_OUTPUT = true;
+static constexpr bool MONO_OUTPUT = false;
 
 static constexpr uint32_t APTX_VENDOR_ID = 0x0000004FUL;
 static constexpr uint16_t APTX_CODEC_ID = 0x0001U;
