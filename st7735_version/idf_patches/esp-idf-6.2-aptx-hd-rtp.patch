@@ -1,0 +1,19 @@
+diff --git a/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c b/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
+--- a/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
++++ b/components/bt/host/bluedroid/stack/avdt/avdt_scb_act.c
+@@ -242,14 +242,11 @@ static BOOLEAN avdt_scb_is_raw_aptx_sink(const tAVDT_SCB *p_scb)
+ {
+     const UINT8 *codec = p_scb->curr_cfg.codec_info;
+     const BOOLEAN classic = codec[3] == 0x4f && codec[4] == 0x00 &&
+                             codec[5] == 0x00 && codec[6] == 0x00 &&
+                             codec[7] == 0x01 && codec[8] == 0x00;
+-    const BOOLEAN hd = codec[3] == 0xd7 && codec[4] == 0x00 &&
+-                       codec[5] == 0x00 && codec[6] == 0x00 &&
+-                       codec[7] == 0x24 && codec[8] == 0x00;
+     return p_scb->cs.tsep == AVDT_TSEP_SNK &&
+            codec[AVDT_CODEC_TYPE_INDEX] == 0xff &&
+-           (classic || hd);
++           classic;
+ }
+ 
+ /*******************************************************************************

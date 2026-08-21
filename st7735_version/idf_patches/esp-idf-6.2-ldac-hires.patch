@@ -1,0 +1,27 @@
+diff --git a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+--- a/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
++++ b/components/bt/host/bluedroid/btc/profile/std/include/btc_av_api.h
+@@ -64,5 +64,7 @@ typedef UINT8 tBTC_AV_CODEC_ID;
+ #define BTC_AV_LDAC_CODEC_ID0   0xAA
+ #define BTC_AV_LDAC_RATE_MASK   0x3F
++#define BTC_AV_LDAC_RATE_96     0x04
++#define BTC_AV_LDAC_RATE_88     0x08
+ #define BTC_AV_LDAC_RATE_48     0x10
+ #define BTC_AV_LDAC_RATE_44     0x20
+ #define BTC_AV_LDAC_CHAN_MASK   0x07
+diff --git a/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c b/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
+--- a/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
++++ b/components/bt/host/bluedroid/btc/profile/std/a2dp/bta_av_co.c
+@@ -605,6 +605,10 @@ static void bta_av_build_src_cfg(UINT8 *p_src_cap, UINT8 *p_pref_cfg)
+                     memcpy(p_pref_cfg, p_src_cap, AVDT_CODEC_SIZE);
+                     if (btc_av_is_ldac_codec_info(p_src_cap)) {
+-                        p_pref_cfg[9] = ((p_src_cap[9] & BTC_AV_LDAC_RATE_48) ?
+-                                         BTC_AV_LDAC_RATE_48 : BTC_AV_LDAC_RATE_44);
++                        p_pref_cfg[9] = (p_src_cap[9] & BTC_AV_LDAC_RATE_96) ?
++                                         BTC_AV_LDAC_RATE_96 :
++                                        (p_src_cap[9] & BTC_AV_LDAC_RATE_88) ?
++                                         BTC_AV_LDAC_RATE_88 :
++                                        (p_src_cap[9] & BTC_AV_LDAC_RATE_48) ?
++                                         BTC_AV_LDAC_RATE_48 : BTC_AV_LDAC_RATE_44;
+                         p_pref_cfg[10] = BTC_AV_LDAC_CHAN_STEREO;
+                     } else {
